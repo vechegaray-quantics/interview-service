@@ -27,7 +27,10 @@ class InterviewService:
         invite_token: str,
     ) -> dict:
         invitation = invitation_service_client.get_invitation_by_token(invite_token)
-        campaign = campaign_service_client.get_interview_config(invitation["campaignId"])
+        campaign = campaign_service_client.get_interview_config(
+            campaign_id=invitation["campaignId"],
+            tenant_id=invitation["tenantId"],
+        )
 
         existing = self._session_repository.get_active_by_invitation_id(
             db=db,
@@ -37,12 +40,6 @@ class InterviewService:
             return self._to_session_response(existing, campaign)
 
         questions = campaign["questions"]
-        if not questions:
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Campaign interview config has no questions",
-            )
-
         first_question = questions[0]
         now = datetime.now(UTC).replace(tzinfo=None)
 
@@ -88,7 +85,10 @@ class InterviewService:
                 detail="Interview session not found",
             )
 
-        campaign = campaign_service_client.get_interview_config(session_obj.campaign_id)
+        campaign = campaign_service_client.get_interview_config(
+            campaign_id=session_obj.campaign_id,
+            tenant_id=session_obj.tenant_id,
+        )
         return self._to_session_response(session_obj, campaign)
 
     def process_message(
@@ -110,7 +110,10 @@ class InterviewService:
                 detail="Interview session is already completed",
             )
 
-        campaign = campaign_service_client.get_interview_config(session_obj.campaign_id)
+        campaign = campaign_service_client.get_interview_config(
+            campaign_id=session_obj.campaign_id,
+            tenant_id=session_obj.tenant_id,
+        )
         questions = campaign["questions"]
 
         if session_obj.current_question_index >= len(questions):
@@ -192,7 +195,10 @@ class InterviewService:
         if existing_report is not None:
             return {"report": existing_report.report_json}
 
-        campaign = campaign_service_client.get_interview_config(session_obj.campaign_id)
+        campaign = campaign_service_client.get_interview_config(
+            campaign_id=session_obj.campaign_id,
+            tenant_id=session_obj.tenant_id,
+        )
         questions = campaign["questions"]
 
         if session_obj.current_question_index < len(questions):

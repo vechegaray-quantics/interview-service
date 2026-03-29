@@ -1,30 +1,72 @@
+import httpx
+from fastapi import HTTPException, status
+
+from app.core.config import settings
+
+
 class CampaignServiceClient:
-    def get_interview_config(self, campaign_id: str) -> dict:
+    def get_interview_config(
+        self,
+        campaign_id: str,
+        tenant_id: str,
+    ) -> dict:
+        base_url = settings.campaign_service_base_url.rstrip("/")
+        url = f"{base_url}/v1/campaigns/{campaign_id}"
+
+        try:
+            response = httpx.get(
+                url,
+                headers={
+                    "X-Tenant-Id": tenant_id,
+                },
+                timeout=10.0,
+            )
+        except httpx.HTTPError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail=f"Campaign service unavailable: {exc}",
+            ) from exc
+
+        if response.status_code == 404:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Campaign not found",
+            )
+
+        if response.status_code >= 400:
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail="Campaign service returned an unexpected error",
+            )
+
+        payload = response.json()
+        raw_questions = payload.get("questions") or []
+
+        questions = []
+        for index, item in enumerate(raw_questions, start=1):
+            question_id = item.get("id") or f"q_{index}"
+            question_text = item.get("text", "").strip()
+            question_objective = item.get("objective") or question_text
+
+            if question_text:
+                questions.append(
+                    {
+                        "id": question_id,
+                        "text": question_text,
+                        "objective": question_objective,
+                    }
+                )
+
+        if not questions:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Campaign interview config has no questions",
+            )
+
         return {
-            "campaignId": campaign_id,
-            "campaignName": "Diagnóstico Comercial Q2",
-            "questions": [
-                {
-                    "id": "main_problem",
-                    "text": "¿Cuál es el principal desafío que enfrentas hoy en este proceso?",
-                    "objective": "Entender el problema principal.",
-                },
-                {
-                    "id": "problem_quantification",
-                    "text": "¿Ese problema está cuantificado?",
-                    "objective": "Entender magnitud y frecuencia.",
-                },
-                {
-                    "id": "problem_hypothesis",
-                    "text": "¿Cuál crees que es la principal causa del problema?",
-                    "objective": "Entender hipótesis de causa raíz.",
-                },
-                {
-                    "id": "expected_results",
-                    "text": "¿Qué resultado esperas conseguir al final de este proyecto?",
-                    "objective": "Entender expectativa de valor.",
-                },
-            ],
+            "campaignId": payload["campaignId"],
+            "campaignName": payload.get("campaignName", "Campaign"),
+            "questions": questions,
         }
 
 
