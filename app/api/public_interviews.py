@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 from app.dependencies.db import get_db
 from app.schemas.interview import InterviewSessionResponse, StartInterviewRequest
 from app.schemas.message import InterviewMessageRequest, InterviewTurnResponse
+from app.schemas.report import FinalizeInterviewRequest, FinalizeInterviewResponse
 from app.services.interview_service import interview_service
 
 
@@ -46,3 +47,17 @@ def post_interview_message(
         message=payload.message,
     )
     return InterviewTurnResponse(**result)
+
+
+@router.post("/{session_id}/finalize", response_model=FinalizeInterviewResponse)
+def finalize_interview_session(
+    session_id: str,
+    payload: FinalizeInterviewRequest,
+    db: Session = Depends(get_db),
+) -> FinalizeInterviewResponse:
+    result = interview_service.finalize_session(
+        db=db,
+        session_id=session_id,
+        include_transcript=payload.includeTranscript,
+    )
+    return FinalizeInterviewResponse(**result)

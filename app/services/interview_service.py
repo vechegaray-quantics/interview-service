@@ -7,15 +7,19 @@ from sqlalchemy.orm import Session
 from app.clients.campaign_service_client import campaign_service_client
 from app.clients.invitation_service_client import invitation_service_client
 from app.models.interview_message import InterviewMessage
+from app.models.interview_report import InterviewReport
 from app.models.interview_session import InterviewSession
 from app.repositories.interview_message_repository import InterviewMessageRepository
+from app.repositories.interview_report_repository import InterviewReportRepository
 from app.repositories.interview_session_repository import InterviewSessionRepository
+from app.services.report_service import report_service
 
 
 class InterviewService:
     def __init__(self) -> None:
         self._session_repository = InterviewSessionRepository()
         self._message_repository = InterviewMessageRepository()
+        self._report_repository = InterviewReportRepository()
 
     def start_session(
         self,
@@ -170,6 +174,61 @@ class InterviewService:
             "assistantMessage": assistant_text,
             "sessionCompleted": session_completed,
         }
+
+    def finalize_session(
+        self,
+        db: Session,
+        session_id: str,
+        include_transcript: bool,
+    ) -> dict:
+        session_obj = self._session_repository.get_by_id(db, session_id)
+        if session_obj is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Interview session not found",
+            )
+
+        existing_report = self._report_repository.get_by_session_id(db, session_id)
+        if existing_report is not None:
+            return {"report": existing_report.report_json}
+
+        campaign = campaign_service_client.get_interview_config(session_obj.campaign_id)
+        questions = campaign["questions"]
+
+        if session_obj.current_question_index < len(questions):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Interview session is not ready to finalize",
+            )
+
+        messages = self._message_repository.list_by_session_id(db, session_id)
+        report = report_service.build_report(
+            session_obj=session_obj,
+            campaign=campaign,
+            messages=messages,
+            include_transcript=include_transcript,
+        )
+
+        now = datetime.now(UTC).replace(tzinfo=None)
+
+        session_obj.status = "completed"
+        session_obj.completed_at = now
+        session_obj.updated_at = now
+        db.add(session_obj)
+        db.commit()
+        db.refresh(session_obj)
+
+        report_obj = InterviewReport(
+            report_id=f"rep_{uuid4().hex[:12]}",
+            session_id=session_obj.session_id,
+            tenant_id=session_obj.tenant_id,
+            campaign_id=session_obj.campaign_id,
+            report_json=report,
+            created_at=now,
+        )
+        self._report_repository.create(db, report_obj)
+
+        return {"report": report}
 
     @staticmethod
     def _to_session_response(

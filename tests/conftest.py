@@ -3,6 +3,7 @@ from sqlalchemy import delete
 
 from app.db import Base, SessionLocal, engine
 from app.models.interview_message import InterviewMessage
+from app.models.interview_report import InterviewReport
 from app.models.interview_session import InterviewSession
 
 
@@ -15,6 +16,7 @@ def create_test_tables() -> None:
 @pytest.fixture(autouse=True)
 def clean_tables() -> None:
     with SessionLocal() as session:
+        session.execute(delete(InterviewReport))
         session.execute(delete(InterviewMessage))
         session.execute(delete(InterviewSession))
         session.commit()

@@ -6,6 +6,7 @@ from alembic import context
 from app.core.config import settings
 from app.db import Base
 from app.models.interview_message import InterviewMessage
+from app.models.interview_report import InterviewReport
 from app.models.interview_session import InterviewSession
 
 
