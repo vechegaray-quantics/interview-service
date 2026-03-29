@@ -9,9 +9,13 @@ from app.clients.invitation_service_client import invitation_service_client
 from app.models.interview_message import InterviewMessage
 from app.models.interview_report import InterviewReport
 from app.models.interview_session import InterviewSession
+from app.models.interview_structured_answer import InterviewStructuredAnswer
 from app.repositories.interview_message_repository import InterviewMessageRepository
 from app.repositories.interview_report_repository import InterviewReportRepository
 from app.repositories.interview_session_repository import InterviewSessionRepository
+from app.repositories.interview_structured_answer_repository import (
+    InterviewStructuredAnswerRepository,
+)
 from app.services.report_service import report_service
 
 
@@ -20,6 +24,7 @@ class InterviewService:
         self._session_repository = InterviewSessionRepository()
         self._message_repository = InterviewMessageRepository()
         self._report_repository = InterviewReportRepository()
+        self._structured_answer_repository = InterviewStructuredAnswerRepository()
 
     def start_session(
         self,
@@ -124,16 +129,51 @@ class InterviewService:
 
         current_question = questions[session_obj.current_question_index]
         now = datetime.now(UTC).replace(tzinfo=None)
+        user_text = message.strip()
 
         user_message = InterviewMessage(
             message_id=f"msg_{uuid4().hex[:12]}",
             session_id=session_obj.session_id,
             role="user",
-            content=message.strip(),
+            content=user_text,
             question_id=current_question["id"],
             created_at=now,
         )
         self._message_repository.create(db, user_message)
+
+        existing_structured = self._structured_answer_repository.get_by_session_and_question_id(
+            db=db,
+            session_id=session_obj.session_id,
+            question_id=current_question["id"],
+        )
+
+        if existing_structured is None:
+            structured_answer = InterviewStructuredAnswer(
+                structured_answer_id=f"ans_{uuid4().hex[:12]}",
+                session_id=session_obj.session_id,
+                question_id=current_question["id"],
+                question_text=current_question["text"],
+                question_objective=current_question["objective"],
+                answer_text=user_text,
+                follow_ups_json=[],
+                created_at=now,
+                updated_at=now,
+            )
+            self._structured_answer_repository.create(db, structured_answer)
+        else:
+            follow_ups = list(existing_structured.follow_ups_json or [])
+            follow_ups.append(
+                {
+                    "answer": user_text,
+                    "recordedAt": now.isoformat(),
+                }
+            )
+            existing_structured.answer_text = user_text
+            existing_structured.follow_ups_json = follow_ups
+            existing_structured.updated_at = now
+            db.add(existing_structured)
+            db.commit()
+            db.refresh(existing_structured)
 
         next_index = session_obj.current_question_index + 1
 
@@ -193,6 +233,7 @@ class InterviewService:
 
         existing_report = self._report_repository.get_by_session_id(db, session_id)
         if existing_report is not None:
+            invitation_service_client.mark_invitation_completed(session_obj.invitation_id)
             return {"report": existing_report.report_json}
 
         campaign = campaign_service_client.get_interview_config(
@@ -208,10 +249,16 @@ class InterviewService:
             )
 
         messages = self._message_repository.list_by_session_id(db, session_id)
+        structured_answers = self._structured_answer_repository.list_by_session_id(
+            db=db,
+            session_id=session_id,
+        )
+
         report = report_service.build_report(
             session_obj=session_obj,
             campaign=campaign,
             messages=messages,
+            structured_answers=structured_answers,
             include_transcript=include_transcript,
         )
 
@@ -233,6 +280,8 @@ class InterviewService:
             created_at=now,
         )
         self._report_repository.create(db, report_obj)
+
+        invitation_service_client.mark_invitation_completed(session_obj.invitation_id)
 
         return {"report": report}
 

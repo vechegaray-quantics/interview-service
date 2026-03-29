@@ -1,5 +1,6 @@
 from fastapi.testclient import TestClient
 
+from app.clients.invitation_service_client import invitation_service_client
 from app.main import app
 
 
@@ -210,3 +211,35 @@ def test_post_message_returns_conflict_after_finalize() -> None:
 
     assert response.status_code == 409
     assert response.json()["detail"] == "Interview session is already completed"
+
+
+def test_finalize_marks_invitation_completed(monkeypatch) -> None:
+    completed_calls: list[str] = []
+
+    def fake_mark_completed(invitation_id: str) -> None:
+        completed_calls.append(invitation_id)
+
+    monkeypatch.setattr(
+        invitation_service_client,
+        "mark_invitation_completed",
+        fake_mark_completed,
+    )
+
+    start_response = client.post(
+        "/public/v1/interviews/start",
+        json={"inviteToken": "tok_mark_001"},
+    )
+    session_id = start_response.json()["sessionId"]
+
+    client.post(f"/public/v1/interviews/{session_id}/messages", json={"message": "Respuesta 1"})
+    client.post(f"/public/v1/interviews/{session_id}/messages", json={"message": "Respuesta 2"})
+    client.post(f"/public/v1/interviews/{session_id}/messages", json={"message": "Respuesta 3"})
+    client.post(f"/public/v1/interviews/{session_id}/messages", json={"message": "Respuesta 4"})
+
+    response = client.post(
+        f"/public/v1/interviews/{session_id}/finalize",
+        json={"includeTranscript": False},
+    )
+
+    assert response.status_code == 200
+    assert completed_calls == ["inv_mark_001"]

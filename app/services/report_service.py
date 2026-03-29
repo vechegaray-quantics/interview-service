@@ -2,6 +2,7 @@ from datetime import UTC, datetime
 
 from app.models.interview_message import InterviewMessage
 from app.models.interview_session import InterviewSession
+from app.models.interview_structured_answer import InterviewStructuredAnswer
 
 
 class ReportService:
@@ -10,14 +11,9 @@ class ReportService:
         session_obj: InterviewSession,
         campaign: dict,
         messages: list[InterviewMessage],
+        structured_answers: list[InterviewStructuredAnswer],
         include_transcript: bool,
     ) -> dict:
-        user_messages = [
-            message.content.strip()
-            for message in messages
-            if message.role == "user" and message.content.strip()
-        ]
-
         transcript = []
         if include_transcript:
             transcript = [
@@ -28,19 +24,21 @@ class ReportService:
                 for message in messages
             ]
 
-        summary = (
-            f"Se completó una entrevista para la campaña {campaign['campaignName']} "
-            f"con {len(user_messages)} respuesta(s) registradas."
-        )
+        ordered_answers = [answer.answer_text.strip() for answer in structured_answers if answer.answer_text.strip()]
 
         main_problem = (
-            user_messages[0]
-            if user_messages
+            ordered_answers[0]
+            if ordered_answers
             else "No se registraron respuestas suficientes para identificar un problema principal."
         )
 
-        observed_symptoms = user_messages[1:3]
-        known_impact = user_messages[3:4]
+        observed_symptoms = ordered_answers[1:3]
+        known_impact = ordered_answers[3:4]
+
+        summary = (
+            f"Se completó una entrevista para la campaña {campaign['campaignName']} "
+            f"con {len(ordered_answers)} respuesta(s) estructuradas."
+        )
 
         return {
             "metadata": {
@@ -49,7 +47,7 @@ class ReportService:
                 "generatedAt": datetime.now(UTC).isoformat(),
                 "campaignId": session_obj.campaign_id,
                 "campaignName": campaign["campaignName"],
-                "model": "stub-v1",
+                "model": "stub-v2-structured",
             },
             "summary": summary,
             "mainProblem": main_problem,

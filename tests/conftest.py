@@ -7,6 +7,7 @@ from app.db import Base, SessionLocal, engine
 from app.models.interview_message import InterviewMessage
 from app.models.interview_report import InterviewReport
 from app.models.interview_session import InterviewSession
+from app.models.interview_structured_answer import InterviewStructuredAnswer
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -19,6 +20,7 @@ def create_test_tables() -> None:
 def clean_tables() -> None:
     with SessionLocal() as session:
         session.execute(delete(InterviewReport))
+        session.execute(delete(InterviewStructuredAnswer))
         session.execute(delete(InterviewMessage))
         session.execute(delete(InterviewSession))
         session.commit()
@@ -44,6 +46,9 @@ def mock_service_clients(monkeypatch: pytest.MonkeyPatch) -> None:
             "status": "sent",
             "inviteToken": invite_token,
         }
+
+    def fake_mark_invitation_completed(invitation_id: str) -> None:
+        return None
 
     def fake_get_interview_config(campaign_id: str, tenant_id: str) -> dict:
         return {
@@ -77,6 +82,11 @@ def mock_service_clients(monkeypatch: pytest.MonkeyPatch) -> None:
         invitation_service_client,
         "get_invitation_by_token",
         fake_get_invitation_by_token,
+    )
+    monkeypatch.setattr(
+        invitation_service_client,
+        "mark_invitation_completed",
+        fake_mark_invitation_completed,
     )
     monkeypatch.setattr(
         campaign_service_client,

@@ -42,6 +42,42 @@ class InvitationServiceClient:
             )
 
         return response.json()
-        
+
+    def mark_invitation_completed(self, invitation_id: str) -> None:
+        base_url = settings.invitation_service_base_url.rstrip("/")
+        url = f"{base_url}/internal/v1/invitations/{invitation_id}/complete"
+
+        try:
+            response = httpx.post(
+                url,
+                headers={
+                    "X-Internal-Service-Token": settings.internal_service_token,
+                },
+                timeout=10.0,
+            )
+        except httpx.HTTPError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail=f"Invitation completion sync failed: {exc}",
+            ) from exc
+
+        if response.status_code == 404:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Invitation not found during completion sync",
+            )
+
+        if response.status_code == 403:
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail="Invitation service rejected internal authentication",
+            )
+
+        if response.status_code >= 400:
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail="Invitation service returned an unexpected error during completion sync",
+            )
+
 
 invitation_service_client = InvitationServiceClient()
