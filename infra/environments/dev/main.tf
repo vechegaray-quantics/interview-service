@@ -127,6 +127,10 @@ resource "google_cloud_run_v2_service" "interview_service" {
         name  = "OPENAI_MODEL"
         value = var.openai_model
       }
+      env {
+        name  = "CORS_ALLOWED_ORIGINS"
+        value = "http://localhost:8000,http://127.0.0.1:8000,https://encuestas-interview.web.app,https://encuestas-interview.firebaseapp.com,https://encuestas-490902.web.app,https://encuestas-490902.firebaseapp.com"
+      }
     }
   }
 
