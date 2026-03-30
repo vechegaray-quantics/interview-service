@@ -47,13 +47,19 @@ class CampaignServiceClient:
             question_id = item.get("id") or f"q_{index}"
             question_text = item.get("text", "").strip()
             question_objective = item.get("objective") or question_text
+            question_max_follow_ups = item.get("maxFollowUps")
 
             if question_text:
+                normalized_max_follow_ups = None
+                if isinstance(question_max_follow_ups, int) and question_max_follow_ups >= 0:
+                    normalized_max_follow_ups = question_max_follow_ups
+
                 questions.append(
                     {
                         "id": question_id,
                         "text": question_text,
                         "objective": question_objective,
+                        "maxFollowUps": normalized_max_follow_ups,
                     }
                 )
 

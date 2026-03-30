@@ -7,7 +7,9 @@ class Settings(BaseSettings):
     internal_service_token: str = "dev-internal-token"
     campaign_service_base_url: str = "http://127.0.0.1:8001"
     invitation_service_base_url: str = "http://127.0.0.1:8002"
+    openai_api_key: str = ""
     openai_model: str = "gpt-5-mini"
+    interview_follow_up_max_questions: int = 2
     cors_allowed_origins: str = (
         "http://localhost:8000,"
         "http://127.0.0.1:8000,"

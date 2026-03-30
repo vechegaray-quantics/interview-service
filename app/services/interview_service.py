@@ -6,6 +6,8 @@ from sqlalchemy.orm import Session
 
 from app.clients.campaign_service_client import campaign_service_client
 from app.clients.invitation_service_client import invitation_service_client
+from app.clients.openai_followup_client import openai_followup_client
+from app.core.config import settings
 from app.models.interview_message import InterviewMessage
 from app.models.interview_report import InterviewReport
 from app.models.interview_session import InterviewSession
@@ -130,6 +132,10 @@ class InterviewService:
         current_question = questions[session_obj.current_question_index]
         now = datetime.now(UTC).replace(tzinfo=None)
         user_text = message.strip()
+        max_follow_ups = current_question.get(
+            "maxFollowUps",
+            settings.interview_follow_up_max_questions,
+        )
 
         user_message = InterviewMessage(
             message_id=f"msg_{uuid4().hex[:12]}",
@@ -174,6 +180,38 @@ class InterviewService:
             db.add(existing_structured)
             db.commit()
             db.refresh(existing_structured)
+
+        generated_follow_up = None
+        if session_obj.follow_up_count_for_current_question < max_follow_ups:
+            generated_follow_up = openai_followup_client.generate_follow_up_question(
+                question_text=current_question["text"],
+                question_objective=current_question["objective"],
+                user_answer=user_text,
+                previous_follow_up_count=session_obj.follow_up_count_for_current_question,
+                max_follow_up_questions=max_follow_ups,
+            )
+
+        if generated_follow_up:
+            session_obj.follow_up_count_for_current_question += 1
+            session_obj.updated_at = now
+            db.add(session_obj)
+            db.commit()
+            db.refresh(session_obj)
+
+            assistant_message = InterviewMessage(
+                message_id=f"msg_{uuid4().hex[:12]}",
+                session_id=session_obj.session_id,
+                role="assistant",
+                content=generated_follow_up,
+                question_id=current_question["id"],
+                created_at=now,
+            )
+            self._message_repository.create(db, assistant_message)
+
+            return {
+                "assistantMessage": generated_follow_up,
+                "sessionCompleted": False,
+            }
 
         next_index = session_obj.current_question_index + 1
 

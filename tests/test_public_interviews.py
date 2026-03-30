@@ -1,5 +1,6 @@
 from fastapi.testclient import TestClient
 
+from app.clients.openai_followup_client import openai_followup_client
 from app.clients.invitation_service_client import invitation_service_client
 from app.main import app
 
@@ -243,3 +244,76 @@ def test_finalize_marks_invitation_completed(monkeypatch) -> None:
 
     assert response.status_code == 200
     assert completed_calls == ["inv_mark_001"]
+
+
+def test_post_message_asks_followup_before_advancing(monkeypatch) -> None:
+    call_count = {"value": 0}
+
+    def fake_followup(*, question_text: str, **kwargs) -> str | None:
+        call_count["value"] += 1
+        if question_text.startswith("¿Cuál es el principal desafío") and call_count["value"] == 1:
+            return "¿Puedes darme un ejemplo concreto de ese desafío?"
+        return None
+
+    monkeypatch.setattr(
+        openai_followup_client,
+        "generate_follow_up_question",
+        fake_followup,
+    )
+
+    start_response = client.post(
+        "/public/v1/interviews/start",
+        json={"inviteToken": "tok_followup_001"},
+    )
+    session_id = start_response.json()["sessionId"]
+
+    first_turn = client.post(
+        f"/public/v1/interviews/{session_id}/messages",
+        json={"message": "Tenemos problemas en varias áreas."},
+    )
+    assert first_turn.status_code == 200
+    assert first_turn.json()["sessionCompleted"] is False
+    assert "ejemplo concreto" in first_turn.json()["assistantMessage"]
+
+    second_turn = client.post(
+        f"/public/v1/interviews/{session_id}/messages",
+        json={"message": "Por ejemplo, se corta el sistema 3 veces por semana."},
+    )
+    assert second_turn.status_code == 200
+    assert second_turn.json()["sessionCompleted"] is False
+    assert "cuantificado" in second_turn.json()["assistantMessage"]
+
+
+def test_post_message_respects_followup_max_limit(monkeypatch) -> None:
+    def fake_followup(**kwargs) -> str | None:
+        return "Necesito más detalle."
+
+    monkeypatch.setattr(
+        openai_followup_client,
+        "generate_follow_up_question",
+        fake_followup,
+    )
+    monkeypatch.setattr(
+        "app.core.config.settings.interview_follow_up_max_questions",
+        1,
+    )
+
+    start_response = client.post(
+        "/public/v1/interviews/start",
+        json={"inviteToken": "tok_followup_limit_001"},
+    )
+    session_id = start_response.json()["sessionId"]
+
+    first_turn = client.post(
+        f"/public/v1/interviews/{session_id}/messages",
+        json={"message": "Respuesta ambigua"},
+    )
+    assert first_turn.status_code == 200
+    assert "Necesito más detalle" in first_turn.json()["assistantMessage"]
+
+    second_turn = client.post(
+        f"/public/v1/interviews/{session_id}/messages",
+        json={"message": "Ahora sí con más detalle"},
+    )
+    assert second_turn.status_code == 200
+    assert "cuantificado" in second_turn.json()["assistantMessage"]
