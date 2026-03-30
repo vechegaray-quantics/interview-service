@@ -3,10 +3,14 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
     app_env: str = "dev"
-    database_url: str = "postgresql+psycopg://postgres:postgres@127.0.0.1:5432/postgres"
-    internal_service_token: str = "dev-internal-token"
-    campaign_service_base_url: str = "http://127.0.0.1:8001"
-    invitation_service_base_url: str = "http://127.0.0.1:8002"
+
+    # obligatorias
+    database_url: str
+    internal_service_token: str
+    campaign_service_base_url: str
+    invitation_service_base_url: str
+
+    # opcionales
     openai_model: str = "gpt-5-mini"
     cors_allowed_origins: str = (
         "http://localhost:8000,"
