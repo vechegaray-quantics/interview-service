@@ -44,10 +44,18 @@ resource "google_project_iam_member" "interview_service_cloudsql_client" {
   member  = "serviceAccount:${google_service_account.interview_service.email}"
 }
 
-resource "google_project_iam_member" "interview_service_secret_accessor" {
-  project = var.project_id
-  role    = "roles/secretmanager.secretAccessor"
-  member  = "serviceAccount:${google_service_account.interview_service.email}"
+resource "google_secret_manager_secret_iam_member" "interview_service_database_url_accessor" {
+  project   = var.project_id
+  secret_id = var.database_url_secret_id
+  role      = "roles/secretmanager.secretAccessor"
+  member    = "serviceAccount:${google_service_account.interview_service.email}"
+}
+
+resource "google_secret_manager_secret_iam_member" "interview_service_internal_token_accessor" {
+  project   = var.project_id
+  secret_id = var.internal_service_token_secret_id
+  role      = "roles/secretmanager.secretAccessor"
+  member    = "serviceAccount:${google_service_account.interview_service.email}"
 }
 
 resource "google_artifact_registry_repository" "interview_service" {
@@ -104,13 +112,23 @@ resource "google_cloud_run_v2_service" "interview_service" {
       }
 
       env {
-        name  = "DATABASE_URL"
-        value = var.database_url
+        name = "DATABASE_URL"
+        value_source {
+          secret_key_ref {
+            secret  = var.database_url_secret_id
+            version = var.database_url_secret_version
+          }
+        }
       }
 
       env {
-        name  = "INTERNAL_SERVICE_TOKEN"
-        value = var.internal_service_token
+        name = "INTERNAL_SERVICE_TOKEN"
+        value_source {
+          secret_key_ref {
+            secret  = var.internal_service_token_secret_id
+            version = var.internal_service_token_secret_version
+          }
+        }
       }
 
       env {
@@ -127,9 +145,10 @@ resource "google_cloud_run_v2_service" "interview_service" {
         name  = "OPENAI_MODEL"
         value = var.openai_model
       }
+
       env {
         name  = "CORS_ALLOWED_ORIGINS"
-        value = "http://localhost:8000,http://127.0.0.1:8000,https://encuestas-interview.web.app,https://encuestas-interview.firebaseapp.com,https://encuestas-490902.web.app,https://encuestas-490902.firebaseapp.com"
+        value = var.cors_allowed_origins
       }
     }
   }
@@ -139,7 +158,8 @@ resource "google_cloud_run_v2_service" "interview_service" {
     google_project_service.secretmanager,
     google_project_service.sqladmin,
     google_project_iam_member.interview_service_cloudsql_client,
-    google_project_iam_member.interview_service_secret_accessor,
+    google_secret_manager_secret_iam_member.interview_service_database_url_accessor,
+    google_secret_manager_secret_iam_member.interview_service_internal_token_accessor,
     google_artifact_registry_repository.interview_service,
   ]
 }

@@ -4,13 +4,11 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     app_env: str = "dev"
 
-    # obligatorias
     database_url: str
     internal_service_token: str
     campaign_service_base_url: str
     invitation_service_base_url: str
 
-    # opcionales
     openai_model: str = "gpt-5-mini"
     cors_allowed_origins: str = (
         "http://localhost:8000,"

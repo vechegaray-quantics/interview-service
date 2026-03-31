@@ -1,26 +1,24 @@
-name: Deploy backend
+name: Deploy interview-service
 
 on:
+  workflow_dispatch:
   push:
     branches:
       - main
+    paths:
+      - "app/**"
+      - "alembic/**"
+      - "Dockerfile"
+      - "requirements.txt"
+      - "alembic.ini"
+      - "pytest.ini"
+      - "*.tf"
+      - "*.tfvars"
+      - ".github/workflows/deploy-interview-service.yml"
 
 permissions:
   contents: read
   id-token: write
-
-env:
-  PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
-  REGION: ${{ vars.GCP_REGION }}
-  TF_DIR: infra/environments/dev
-  TF_STATE_BUCKET: ${{ vars.TF_STATE_BUCKET }}
-  TF_STATE_PREFIX: ${{ vars.TF_STATE_PREFIX }}
-  GAR_REPOSITORY: ${{ vars.GAR_REPOSITORY }}
-  SERVICE_NAME: ${{ vars.CLOUD_RUN_SERVICE }}
-  CLOUD_SQL_INSTANCE_CONNECTION_NAME: ${{ vars.CLOUD_SQL_INSTANCE_CONNECTION_NAME }}
-  DB_NAME: ${{ vars.DB_NAME }}
-  DB_USER: ${{ vars.DB_USER }}
-  IMAGE_URI: ${{ vars.GCP_REGION }}-docker.pkg.dev/${{ vars.GCP_PROJECT_ID }}/${{ vars.GAR_REPOSITORY }}/${{ vars.CLOUD_RUN_SERVICE }}:${{ github.sha }}
 
 jobs:
   deploy:
@@ -42,7 +40,23 @@ jobs:
           --health-retries=20
 
     env:
+      PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+      REGION: ${{ vars.GCP_REGION }}
+      TF_STATE_BUCKET: ${{ vars.TF_STATE_BUCKET }}
+      TF_STATE_PREFIX: ${{ vars.TF_STATE_PREFIX }}
+      GAR_REPOSITORY: ${{ vars.GAR_REPOSITORY }}
+      SERVICE_NAME: ${{ vars.CLOUD_RUN_SERVICE }}
+      CLOUD_SQL_INSTANCE_CONNECTION_NAME: ${{ vars.CLOUD_SQL_INSTANCE_CONNECTION_NAME }}
+      DB_NAME: ${{ vars.DB_NAME }}
+      DB_USER: ${{ vars.DB_USER }}
+      IMAGE_URI: ${{ vars.GCP_REGION }}-docker.pkg.dev/${{ vars.GCP_PROJECT_ID }}/${{ vars.GAR_REPOSITORY }}/${{ vars.CLOUD_RUN_SERVICE }}:${{ github.sha }}
+
+      # Requeridas por Settings() para tests y alembic
+      APP_ENV: ci
       DATABASE_URL: postgresql+psycopg://postgres:postgres@127.0.0.1:5432/postgres
+      INTERNAL_SERVICE_TOKEN: ${{ secrets.INTERNAL_SERVICE_TOKEN }}
+      CAMPAIGN_SERVICE_BASE_URL: ${{ vars.CAMPAIGN_SERVICE_BASE_URL }}
+      INVITATION_SERVICE_BASE_URL: ${{ vars.INVITATION_SERVICE_BASE_URL }}
 
     steps:
       - name: Checkout
@@ -104,25 +118,46 @@ jobs:
 
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.7.5
 
       - name: Terraform init
-        working-directory: ${{ env.TF_DIR }}
         run: |
           terraform init \
+            -input=false \
             -backend-config="bucket=${TF_STATE_BUCKET}" \
             -backend-config="prefix=${TF_STATE_PREFIX}"
 
       - name: Terraform validate
-        working-directory: ${{ env.TF_DIR }}
         run: terraform validate
 
-      - name: Terraform apply
-        working-directory: ${{ env.TF_DIR }}
+      - name: Terraform plan
         env:
+          TF_VAR_project_id: ${{ vars.GCP_PROJECT_ID }}
+          TF_VAR_region: ${{ vars.GCP_REGION }}
+          TF_VAR_service_name: ${{ vars.CLOUD_RUN_SERVICE }}
+          TF_VAR_artifact_registry_repository: ${{ vars.GAR_REPOSITORY }}
+          TF_VAR_cloud_sql_instance_connection_name: ${{ vars.CLOUD_SQL_INSTANCE_CONNECTION_NAME }}
           TF_VAR_database_url: ${{ secrets.DATABASE_URL_CLOUDRUN }}
           TF_VAR_internal_service_token: ${{ secrets.INTERNAL_SERVICE_TOKEN }}
           TF_VAR_campaign_service_base_url: ${{ vars.CAMPAIGN_SERVICE_BASE_URL }}
           TF_VAR_invitation_service_base_url: ${{ vars.INVITATION_SERVICE_BASE_URL }}
-        run: |
-          terraform apply -auto-approve \
-            -var="container_image_tag=${GITHUB_SHA}"
+          TF_VAR_container_image_tag: ${{ github.sha }}
+        run: terraform plan -input=false -out=tfplan
+
+      - name: Terraform apply
+        env:
+          TF_VAR_project_id: ${{ vars.GCP_PROJECT_ID }}
+          TF_VAR_region: ${{ vars.GCP_REGION }}
+          TF_VAR_service_name: ${{ vars.CLOUD_RUN_SERVICE }}
+          TF_VAR_artifact_registry_repository: ${{ vars.GAR_REPOSITORY }}
+          TF_VAR_cloud_sql_instance_connection_name: ${{ vars.CLOUD_SQL_INSTANCE_CONNECTION_NAME }}
+          TF_VAR_database_url: ${{ secrets.DATABASE_URL_CLOUDRUN }}
+          TF_VAR_internal_service_token: ${{ secrets.INTERNAL_SERVICE_TOKEN }}
+          TF_VAR_campaign_service_base_url: ${{ vars.CAMPAIGN_SERVICE_BASE_URL }}
+          TF_VAR_invitation_service_base_url: ${{ vars.INVITATION_SERVICE_BASE_URL }}
+          TF_VAR_container_image_tag: ${{ github.sha }}
+        run: terraform apply -input=false -auto-approve tfplan
+
+      - name: Show deployed URL
+        run: terraform output -raw interview_service_url
