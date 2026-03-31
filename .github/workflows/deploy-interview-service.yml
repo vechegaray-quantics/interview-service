@@ -54,7 +54,7 @@ jobs:
 
       APP_ENV: ci
       DATABASE_URL: postgresql+psycopg://postgres:postgres@127.0.0.1:5432/postgres
-      INTERNAL_SERVICE_TOKEN: dummy-ci-token
+      INTERNAL_SERVICE_TOKEN: ${{ secrets.INTERNAL_SERVICE_TOKEN }}
       CAMPAIGN_SERVICE_BASE_URL: ${{ vars.CAMPAIGN_SERVICE_BASE_URL }}
       INVITATION_SERVICE_BASE_URL: ${{ vars.INVITATION_SERVICE_BASE_URL }}
 
@@ -141,14 +141,11 @@ jobs:
           TF_VAR_service_name: ${{ vars.CLOUD_RUN_SERVICE }}
           TF_VAR_artifact_registry_repository: ${{ vars.GAR_REPOSITORY }}
           TF_VAR_cloud_sql_instance_connection_name: ${{ vars.CLOUD_SQL_INSTANCE_CONNECTION_NAME }}
+          TF_VAR_database_url: ${{ secrets.DATABASE_URL_CLOUDRUN }}
+          TF_VAR_internal_service_token: ${{ secrets.INTERNAL_SERVICE_TOKEN }}
           TF_VAR_campaign_service_base_url: ${{ vars.CAMPAIGN_SERVICE_BASE_URL }}
           TF_VAR_invitation_service_base_url: ${{ vars.INVITATION_SERVICE_BASE_URL }}
           TF_VAR_container_image_tag: ${{ github.sha }}
-
-          TF_VAR_database_url_secret_id: interview-service-database-url
-          TF_VAR_database_url_secret_version: "1"
-          TF_VAR_internal_service_token_secret_id: shared-internal-service-token
-          TF_VAR_internal_service_token_secret_version: "1"
         run: terraform plan -input=false -out=tfplan
 
       - name: Terraform apply
@@ -159,14 +156,11 @@ jobs:
           TF_VAR_service_name: ${{ vars.CLOUD_RUN_SERVICE }}
           TF_VAR_artifact_registry_repository: ${{ vars.GAR_REPOSITORY }}
           TF_VAR_cloud_sql_instance_connection_name: ${{ vars.CLOUD_SQL_INSTANCE_CONNECTION_NAME }}
+          TF_VAR_database_url: ${{ secrets.DATABASE_URL_CLOUDRUN }}
+          TF_VAR_internal_service_token: ${{ secrets.INTERNAL_SERVICE_TOKEN }}
           TF_VAR_campaign_service_base_url: ${{ vars.CAMPAIGN_SERVICE_BASE_URL }}
           TF_VAR_invitation_service_base_url: ${{ vars.INVITATION_SERVICE_BASE_URL }}
           TF_VAR_container_image_tag: ${{ github.sha }}
-
-          TF_VAR_database_url_secret_id: interview-service-database-url
-          TF_VAR_database_url_secret_version: "1"
-          TF_VAR_internal_service_token_secret_id: shared-internal-service-token
-          TF_VAR_internal_service_token_secret_version: "1"
         run: terraform apply -input=false -auto-approve tfplan
 
       - name: Show deployed URL
