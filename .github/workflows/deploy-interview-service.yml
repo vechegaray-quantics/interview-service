@@ -12,8 +12,7 @@ on:
       - "requirements.txt"
       - "alembic.ini"
       - "pytest.ini"
-      - "*.tf"
-      - "*.tfvars"
+      - "infra/environments/dev/**"
       - ".github/workflows/deploy-interview-service.yml"
 
 permissions:
@@ -40,6 +39,8 @@ jobs:
           --health-retries=20
 
     env:
+      TF_DIR: infra/environments/dev
+
       PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
       REGION: ${{ vars.GCP_REGION }}
       TF_STATE_BUCKET: ${{ vars.TF_STATE_BUCKET }}
@@ -51,7 +52,6 @@ jobs:
       DB_USER: ${{ vars.DB_USER }}
       IMAGE_URI: ${{ vars.GCP_REGION }}-docker.pkg.dev/${{ vars.GCP_PROJECT_ID }}/${{ vars.GAR_REPOSITORY }}/${{ vars.CLOUD_RUN_SERVICE }}:${{ github.sha }}
 
-      # Requeridas por Settings() para tests y alembic
       APP_ENV: ci
       DATABASE_URL: postgresql+psycopg://postgres:postgres@127.0.0.1:5432/postgres
       INTERNAL_SERVICE_TOKEN: ${{ secrets.INTERNAL_SERVICE_TOKEN }}
@@ -122,6 +122,7 @@ jobs:
           terraform_version: 1.7.5
 
       - name: Terraform init
+        working-directory: ${{ env.TF_DIR }}
         run: |
           terraform init \
             -input=false \
@@ -129,9 +130,11 @@ jobs:
             -backend-config="prefix=${TF_STATE_PREFIX}"
 
       - name: Terraform validate
+        working-directory: ${{ env.TF_DIR }}
         run: terraform validate
 
       - name: Terraform plan
+        working-directory: ${{ env.TF_DIR }}
         env:
           TF_VAR_project_id: ${{ vars.GCP_PROJECT_ID }}
           TF_VAR_region: ${{ vars.GCP_REGION }}
@@ -146,6 +149,7 @@ jobs:
         run: terraform plan -input=false -out=tfplan
 
       - name: Terraform apply
+        working-directory: ${{ env.TF_DIR }}
         env:
           TF_VAR_project_id: ${{ vars.GCP_PROJECT_ID }}
           TF_VAR_region: ${{ vars.GCP_REGION }}
@@ -160,4 +164,5 @@ jobs:
         run: terraform apply -input=false -auto-approve tfplan
 
       - name: Show deployed URL
+        working-directory: ${{ env.TF_DIR }}
         run: terraform output -raw interview_service_url
