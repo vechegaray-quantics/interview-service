@@ -15,6 +15,7 @@ class Settings(BaseSettings):
     llm_followup_temperature: float = 0.2
     llm_followup_timeout_seconds: int = 20
 
+
     cors_allowed_origins: str = (
         "http://localhost:8000,"
         "http://127.0.0.1:8000,"
