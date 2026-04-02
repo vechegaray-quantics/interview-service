@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.clients.campaign_service_client import campaign_service_client
 from app.clients.invitation_service_client import invitation_service_client
+from app.core.config import settings
 from app.models.interview_message import InterviewMessage
 from app.models.interview_report import InterviewReport
 from app.models.interview_session import InterviewSession
@@ -205,7 +206,7 @@ class InterviewService:
                 current_question["id"],
             ),
             follow_up_count=session_obj.follow_up_count_for_current_question,
-            max_follow_ups=1,
+            max_follow_ups=settings.llm_max_followups_per_question,
         )
 
         if decision["requiresFollowUp"]:
@@ -343,6 +344,24 @@ class InterviewService:
 
         return {"report": report}
 
+    def get_dashboard_session_by_invitation(
+        self,
+        db: Session,
+        invitation_id: str,
+        tenant_id: str,
+    ) -> dict:
+        session_obj = self._session_repository.get_latest_by_invitation_id(
+            db=db,
+            invitation_id=invitation_id,
+        )
+        if session_obj is None or session_obj.tenant_id != tenant_id:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Interview session not found for invitation",
+            )
+
+        return self._build_session_detail_payload(db, session_obj)
+
     def get_internal_session_by_invitation(
         self,
         db: Session,
@@ -358,6 +377,13 @@ class InterviewService:
                 detail="Interview session not found for invitation",
             )
 
+        return self._build_session_detail_payload(db, session_obj)
+
+    def _build_session_detail_payload(
+        self,
+        db: Session,
+        session_obj: InterviewSession,
+    ) -> dict:
         messages = self._message_repository.list_by_session_id(db, session_obj.session_id)
         structured_answers = self._structured_answer_repository.list_by_session_id(
             db=db,
