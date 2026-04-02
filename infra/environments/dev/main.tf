@@ -124,8 +124,28 @@ resource "google_cloud_run_v2_service" "interview_service" {
       }
 
       env {
+        name  = "OPENAI_API_KEY"
+        value = var.openai_api_key
+      }
+
+      env {
         name  = "OPENAI_MODEL"
         value = var.openai_model
+      }
+
+      env {
+        name  = "LLM_MAX_FOLLOWUPS_PER_QUESTION"
+        value = tostring(var.llm_max_followups_per_question)
+      }
+
+      env {
+        name  = "LLM_FOLLOWUP_TEMPERATURE"
+        value = tostring(var.llm_followup_temperature)
+      }
+
+      env {
+        name  = "LLM_FOLLOWUP_TIMEOUT_SECONDS"
+        value = tostring(var.llm_followup_timeout_seconds)
       }
 
       env {

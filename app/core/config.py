@@ -9,7 +9,12 @@ class Settings(BaseSettings):
     campaign_service_base_url: str
     invitation_service_base_url: str
 
-    openai_model: str = "gpt-5-mini"
+    openai_api_key: str = ""
+    openai_model: str = "gpt-4o-mini"
+    llm_max_followups_per_question: int = 1
+    llm_followup_temperature: float = 0.2
+    llm_followup_timeout_seconds: int = 20
+
     cors_allowed_origins: str = (
         "http://localhost:8000,"
         "http://127.0.0.1:8000,"

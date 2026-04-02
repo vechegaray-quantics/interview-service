@@ -145,6 +145,7 @@ jobs:
           TF_VAR_internal_service_token: ${{ secrets.INTERNAL_SERVICE_TOKEN }}
           TF_VAR_campaign_service_base_url: ${{ vars.CAMPAIGN_SERVICE_BASE_URL }}
           TF_VAR_invitation_service_base_url: ${{ vars.INVITATION_SERVICE_BASE_URL }}
+          TF_VAR_openai_api_key: ${{ secrets.OPENAI_API_KEY }}
           TF_VAR_container_image_tag: ${{ github.sha }}
         run: terraform plan -input=false -out=tfplan
 
@@ -160,6 +161,7 @@ jobs:
           TF_VAR_internal_service_token: ${{ secrets.INTERNAL_SERVICE_TOKEN }}
           TF_VAR_campaign_service_base_url: ${{ vars.CAMPAIGN_SERVICE_BASE_URL }}
           TF_VAR_invitation_service_base_url: ${{ vars.INVITATION_SERVICE_BASE_URL }}
+          TF_VAR_openai_api_key: ${{ secrets.OPENAI_API_KEY }}
           TF_VAR_container_image_tag: ${{ github.sha }}
         run: terraform apply -input=false -auto-approve tfplan
 

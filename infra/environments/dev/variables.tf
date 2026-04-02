@@ -41,9 +41,30 @@ variable "invitation_service_base_url" {
   type = string
 }
 
+variable "openai_api_key" {
+  type      = string
+  sensitive = true
+  default   = ""
+}
+
 variable "openai_model" {
   type    = string
-  default = "gpt-5-mini"
+  default = "gpt-4o-mini"
+}
+
+variable "llm_max_followups_per_question" {
+  type    = number
+  default = 1
+}
+
+variable "llm_followup_temperature" {
+  type    = number
+  default = 0.2
+}
+
+variable "llm_followup_timeout_seconds" {
+  type    = number
+  default = 20
 }
 
 variable "container_image_tag" {

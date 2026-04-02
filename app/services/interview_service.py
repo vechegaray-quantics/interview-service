@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.clients.campaign_service_client import campaign_service_client
 from app.clients.invitation_service_client import invitation_service_client
+from app.core.config import settings
 from app.models.interview_message import InterviewMessage
 from app.models.interview_report import InterviewReport
 from app.models.interview_session import InterviewSession
@@ -16,6 +17,7 @@ from app.repositories.interview_session_repository import InterviewSessionReposi
 from app.repositories.interview_structured_answer_repository import (
     InterviewStructuredAnswerRepository,
 )
+from app.services.followup_service import followup_service
 from app.services.report_service import report_service
 
 
@@ -42,7 +44,7 @@ class InterviewService:
             invitation_id=invitation["invitationId"],
         )
         if existing is not None:
-            return self._to_session_response(existing, campaign)
+            return self._to_session_response(db, existing, campaign)
 
         questions = campaign["questions"]
         first_question = questions[0]
@@ -76,7 +78,7 @@ class InterviewService:
         )
         self._message_repository.create(db, assistant_message)
 
-        return self._to_session_response(created_session, campaign)
+        return self._to_session_response(db, created_session, campaign)
 
     def get_session(
         self,
@@ -94,7 +96,7 @@ class InterviewService:
             campaign_id=session_obj.campaign_id,
             tenant_id=session_obj.tenant_id,
         )
-        return self._to_session_response(session_obj, campaign)
+        return self._to_session_response(db, session_obj, campaign)
 
     def process_message(
         self,
@@ -131,6 +133,18 @@ class InterviewService:
         now = datetime.now(UTC).replace(tzinfo=None)
         user_text = message.strip()
 
+        if not user_text:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Message cannot be blank",
+            )
+
+        previous_messages = self._message_repository.list_by_session_id(db, session_id)
+        last_assistant_message = self._get_last_assistant_message_for_question(
+            previous_messages,
+            current_question["id"],
+        )
+
         user_message = InterviewMessage(
             message_id=f"msg_{uuid4().hex[:12]}",
             session_id=session_obj.session_id,
@@ -164,16 +178,54 @@ class InterviewService:
             follow_ups = list(existing_structured.follow_ups_json or [])
             follow_ups.append(
                 {
+                    "question": last_assistant_message.content if last_assistant_message else None,
                     "answer": user_text,
                     "recordedAt": now.isoformat(),
                 }
             )
-            existing_structured.answer_text = user_text
             existing_structured.follow_ups_json = follow_ups
             existing_structured.updated_at = now
             db.add(existing_structured)
             db.commit()
             db.refresh(existing_structured)
+
+        thread_messages = self._message_repository.list_by_session_id(db, session_id)
+        decision = followup_service.decide_follow_up(
+            campaign_name=campaign["campaignName"],
+            question_text=current_question["text"],
+            question_objective=current_question["objective"],
+            thread_messages=self._filter_messages_for_question(
+                thread_messages,
+                current_question["id"],
+            ),
+            follow_up_count=session_obj.follow_up_count_for_current_question,
+            max_follow_ups=settings.llm_max_followups_per_question,
+        )
+
+        if decision["requiresFollowUp"]:
+            session_obj.follow_up_count_for_current_question += 1
+            session_obj.updated_at = now
+            db.add(session_obj)
+            db.commit()
+            db.refresh(session_obj)
+
+            assistant_text = decision["followUpQuestion"]
+            assistant_question_id = current_question["id"]
+
+            assistant_message = InterviewMessage(
+                message_id=f"msg_{uuid4().hex[:12]}",
+                session_id=session_obj.session_id,
+                role="assistant",
+                content=assistant_text,
+                question_id=assistant_question_id,
+                created_at=now,
+            )
+            self._message_repository.create(db, assistant_message)
+
+            return {
+                "assistantMessage": assistant_text,
+                "sessionCompleted": False,
+            }
 
         next_index = session_obj.current_question_index + 1
 
@@ -285,8 +337,9 @@ class InterviewService:
 
         return {"report": report}
 
-    @staticmethod
     def _to_session_response(
+        self,
+        db: Session,
         session_obj: InterviewSession,
         campaign: dict,
     ) -> dict:
@@ -297,7 +350,17 @@ class InterviewService:
             assistant_message = "La entrevista quedó lista para finalizar."
             session_completed = True
         else:
-            assistant_message = questions[current_index]["text"]
+            messages = self._message_repository.list_by_session_id(db, session_obj.session_id)
+            pending_assistant_message = self._get_last_assistant_message_for_question(
+                messages,
+                questions[current_index]["id"],
+            )
+
+            if pending_assistant_message is not None:
+                assistant_message = pending_assistant_message.content
+            else:
+                assistant_message = questions[current_index]["text"]
+
             session_completed = False
 
         return {
@@ -307,6 +370,23 @@ class InterviewService:
             "assistantMessage": assistant_message,
             "sessionCompleted": session_completed,
         }
+
+    @staticmethod
+    def _filter_messages_for_question(
+        messages: list[InterviewMessage],
+        question_id: str,
+    ) -> list[InterviewMessage]:
+        return [message for message in messages if message.question_id == question_id]
+
+    @staticmethod
+    def _get_last_assistant_message_for_question(
+        messages: list[InterviewMessage],
+        question_id: str,
+    ) -> InterviewMessage | None:
+        for message in reversed(messages):
+            if message.role == "assistant" and message.question_id == question_id:
+                return message
+        return None
 
 
 interview_service = InterviewService()
