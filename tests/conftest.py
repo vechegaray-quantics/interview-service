@@ -1,3 +1,10 @@
+import os
+
+os.environ.setdefault("DATABASE_URL", "sqlite+pysqlite:///:memory:")
+os.environ.setdefault("INTERNAL_SERVICE_TOKEN", "ci-internal-token")
+os.environ.setdefault("CAMPAIGN_SERVICE_BASE_URL", "http://campaign-service.test")
+os.environ.setdefault("INVITATION_SERVICE_BASE_URL", "http://invitation-service.test")
+
 import pytest
 from sqlalchemy import delete
 

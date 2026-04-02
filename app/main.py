@@ -1,6 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.api.internal_interviews import router as internal_interviews_router
 from app.api.public_interviews import router as public_interviews_router
 from app.core.config import settings
 
@@ -19,6 +20,7 @@ app.add_middleware(
 )
 
 app.include_router(public_interviews_router)
+app.include_router(internal_interviews_router)
 
 
 @app.get("/")

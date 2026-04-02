@@ -35,5 +35,19 @@ class InterviewSessionRepository:
                 InterviewSession.status == "in_progress",
             )
             .order_by(InterviewSession.created_at.desc())
+            .limit(1)
+        )
+        return db.execute(stmt).scalar_one_or_none()
+
+    def get_latest_by_invitation_id(
+        self,
+        db: Session,
+        invitation_id: str,
+    ) -> InterviewSession | None:
+        stmt = (
+            select(InterviewSession)
+            .where(InterviewSession.invitation_id == invitation_id)
+            .order_by(InterviewSession.created_at.desc())
+            .limit(1)
         )
         return db.execute(stmt).scalar_one_or_none()

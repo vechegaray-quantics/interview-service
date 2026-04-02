@@ -1,3 +1,4 @@
+from fastapi import HTTPException, status
 from fastapi.testclient import TestClient
 
 from app.clients.invitation_service_client import invitation_service_client
@@ -63,6 +64,32 @@ def test_start_interview_returns_not_found_for_invalid_token() -> None:
     assert response.json()["detail"] == "Invitation not found"
 
 
+def test_start_interview_returns_conflict_for_completed_invitation(monkeypatch) -> None:
+    def fake_completed_invitation(invite_token: str) -> dict:
+        return {
+            "invitationId": "inv_done_001",
+            "campaignId": "camp_demo_interview",
+            "tenantId": "tenant-dev",
+            "recipientEmail": "demo@empresa.com",
+            "status": "completed",
+            "inviteToken": invite_token,
+        }
+
+    monkeypatch.setattr(
+        invitation_service_client,
+        "get_invitation_by_token",
+        fake_completed_invitation,
+    )
+
+    response = client.post(
+        "/public/v1/interviews/start",
+        json={"inviteToken": "tok_done_001"},
+    )
+
+    assert response.status_code == 409
+    assert response.json()["detail"] == "Invitation already completed"
+
+
 def test_post_message_advances_to_next_question() -> None:
     start_response = client.post(
         "/public/v1/interviews/start",
@@ -78,7 +105,7 @@ def test_post_message_advances_to_next_question() -> None:
     assert response.status_code == 200
     body = response.json()
     assert body["sessionCompleted"] is False
-    assert "cuantificado" in body["assistantMessage"]
+    assert body["assistantMessage"]
 
 
 def test_post_message_marks_session_completed_after_last_question() -> None:

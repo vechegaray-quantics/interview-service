@@ -6,7 +6,6 @@ from sqlalchemy.orm import Session
 
 from app.clients.campaign_service_client import campaign_service_client
 from app.clients.invitation_service_client import invitation_service_client
-from app.core.config import settings
 from app.models.interview_message import InterviewMessage
 from app.models.interview_report import InterviewReport
 from app.models.interview_session import InterviewSession
@@ -34,6 +33,13 @@ class InterviewService:
         invite_token: str,
     ) -> dict:
         invitation = invitation_service_client.get_invitation_by_token(invite_token)
+
+        if invitation.get("status") == "completed":
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Invitation already completed",
+            )
+
         campaign = campaign_service_client.get_interview_config(
             campaign_id=invitation["campaignId"],
             tenant_id=invitation["tenantId"],
@@ -199,7 +205,7 @@ class InterviewService:
                 current_question["id"],
             ),
             follow_up_count=session_obj.follow_up_count_for_current_question,
-            max_follow_ups=settings.llm_max_followups_per_question,
+            max_follow_ups=1,
         )
 
         if decision["requiresFollowUp"]:
@@ -337,6 +343,64 @@ class InterviewService:
 
         return {"report": report}
 
+    def get_internal_session_by_invitation(
+        self,
+        db: Session,
+        invitation_id: str,
+    ) -> dict:
+        session_obj = self._session_repository.get_latest_by_invitation_id(
+            db=db,
+            invitation_id=invitation_id,
+        )
+        if session_obj is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Interview session not found for invitation",
+            )
+
+        messages = self._message_repository.list_by_session_id(db, session_obj.session_id)
+        structured_answers = self._structured_answer_repository.list_by_session_id(
+            db=db,
+            session_id=session_obj.session_id,
+        )
+        report_obj = self._report_repository.get_by_session_id(db, session_obj.session_id)
+
+        return {
+            "sessionId": session_obj.session_id,
+            "invitationId": session_obj.invitation_id,
+            "tenantId": session_obj.tenant_id,
+            "campaignId": session_obj.campaign_id,
+            "status": session_obj.status,
+            "startedAt": self._serialize_datetime(session_obj.started_at),
+            "completedAt": self._serialize_datetime(session_obj.completed_at),
+            "createdAt": self._serialize_datetime(session_obj.created_at),
+            "updatedAt": self._serialize_datetime(session_obj.updated_at),
+            "transcript": [
+                {
+                    "messageId": message.message_id,
+                    "role": message.role,
+                    "content": message.content,
+                    "questionId": message.question_id,
+                    "createdAt": self._serialize_datetime(message.created_at),
+                }
+                for message in messages
+            ],
+            "structuredAnswers": [
+                {
+                    "structuredAnswerId": answer.structured_answer_id,
+                    "questionId": answer.question_id,
+                    "questionText": answer.question_text,
+                    "questionObjective": answer.question_objective,
+                    "answerText": answer.answer_text,
+                    "followUps": answer.follow_ups_json or [],
+                    "createdAt": self._serialize_datetime(answer.created_at),
+                    "updatedAt": self._serialize_datetime(answer.updated_at),
+                }
+                for answer in structured_answers
+            ],
+            "report": report_obj.report_json if report_obj is not None else None,
+        }
+
     def _to_session_response(
         self,
         db: Session,
@@ -387,6 +451,12 @@ class InterviewService:
             if message.role == "assistant" and message.question_id == question_id:
                 return message
         return None
+
+    @staticmethod
+    def _serialize_datetime(value: datetime | None) -> str | None:
+        if value is None:
+            return None
+        return value.isoformat()
 
 
 interview_service = InterviewService()
