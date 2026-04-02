@@ -9,7 +9,7 @@ client = TestClient(app)
 def test_get_dashboard_interview_by_invitation_returns_transcript_and_report() -> None:
     start_response = client.post(
         "/public/v1/interviews/start",
-        json={"inviteToken": "tok_dashboard_001"},
+        json={"inviteToken": "tok_dash_001"},
     )
     session_id = start_response.json()["sessionId"]
 
@@ -23,14 +23,14 @@ def test_get_dashboard_interview_by_invitation_returns_transcript_and_report() -
     )
 
     response = client.get(
-        "/v1/interviews/by-invitation/inv_dashboard_001",
+        "/v1/interviews/by-invitation/inv_dash_001",
         headers={"X-Tenant-Id": "tenant-dev"},
     )
 
     assert response.status_code == 200
     body = response.json()
     assert body["sessionId"] == session_id
-    assert body["invitationId"] == "inv_dashboard_001"
+    assert body["invitationId"] == "inv_dash_001"
     assert body["tenantId"] == "tenant-dev"
     assert body["status"] == "completed"
     assert len(body["transcript"]) > 0
@@ -50,14 +50,14 @@ def test_get_dashboard_interview_by_invitation_requires_tenant_header() -> None:
 def test_get_dashboard_interview_by_invitation_returns_not_found_for_wrong_tenant() -> None:
     start_response = client.post(
         "/public/v1/interviews/start",
-        json={"inviteToken": "tok_dashboard_002"},
+        json={"inviteToken": "tok_dash_002"},
     )
     session_id = start_response.json()["sessionId"]
 
     client.post(f"/public/v1/interviews/{session_id}/messages", json={"message": "Respuesta 1"})
 
     response = client.get(
-        "/v1/interviews/by-invitation/inv_dashboard_002",
+        "/v1/interviews/by-invitation/inv_dash_002",
         headers={"X-Tenant-Id": "tenant-otro"},
     )
 
